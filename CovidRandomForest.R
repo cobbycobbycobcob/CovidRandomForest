@@ -1,6 +1,7 @@
 #####################################################################################################################################################################################
 # TIME SERIES ANALYSIS USING RANDOM FOREST REGRESSION
 # COVID 19 Data
+# Aapted from https://petolau.github.io/Regression-trees-for-forecasting-time-series-in-R/
 #####################################################################################################################################################################################
 
 ### Import Libraries
@@ -52,7 +53,7 @@ newcases_pl
 ### Set the time frame
 ## The time frame will be the past 36 weeks
 data_timeframed <- data_pre_can %>%
-  filter(data_pre_can$date > data_pre_can[length(data_pre_can$date), 'date'] %m-% days(246), 
+  filter(data_pre_can$date > data_pre_can[length(data_pre_can$date), 'date'] %m-% days(246), # Exclusive, i.e. 245 days
          data_pre_can$date < data_pre_can[length(data_pre_can$date), 'date'])
 
 ### Create global variables
@@ -62,11 +63,15 @@ data_timeframed <- data_pre_can %>%
 # Contain the unique dates from the raw dataset
 n_date <- unique(data_timeframed[ , 'date'])
 # Contain the period length as 1 day (48 sequential observations)
-day_period <- 1 # # The data is half-hourly (i.e. 48 data points per 24 hour period), so the period corresponds to 1 day
-# Note: for daily data, the period would be 1
+day_period <- 1 # # The data is daily, i.e. each observation represents measurements across a one day interval in time
 
-## Define weekly seasonality
-week_period <- day_period * 7 # 1 period is 24 hours *  7 is 1 week
+## Define Seasonality Periods
+# Weekly
+week_period <- day_period * 7 # Period 1 is 24 hours *  7 is 1 week
+# Two Day
+twoday_period <- day_period * 2 # Period 2 is every other day, i.e. day_period * 2
+
+## Note: these periods are chosen because they measure frequencies that are asynchronous up to 14 periods (the prediction window)
 
 ## Note: Rob Hyndman recommends NOT modelling monthly seasonality patterns, given their dynamic nature as a window of time
 
@@ -223,7 +228,7 @@ ggplot(arima_data, aes(Date, NewCases, color = Type)) +
 
 N <- nrow(data_train) # Number of observations in the training set
 
-lag_window <- (N / week_period) - 1 # number of obvs / period = days in train set minus lag (1 day)
+lag_window <- N - 1 * week_period # number of obvs / period = days in train set minus lag (1 day)
 ### In the case of daily data, the window would be the number of observations - 1
 
 # Contain the seasonal and error data, separate from the trend
@@ -243,7 +248,7 @@ mape <- function(real, pred){
 ## The time series data as a series of vectors (dataframe) cannot be interpreted by ML algorithms, e.g. Random Forest
 
 ts_matrix_train <- data.frame(NewCases = tail(load_detrend, lag_window), # NOTE: the detrend data is used
-                              data_seasonfourier[(day_period + 1):N, ], # Incorporates fourier estimates from msts
+                              data_seasonfourier[(week_period+1):N, ], # Incorporates fourier estimates from msts
                               Lag = lag_seasonal)
 
 ### Growing Regression Trees
@@ -296,7 +301,7 @@ tree2 <- rpart(NewCases ~ ., data = ts_matrix_train,
                control = rpart.control(
                  minsplit = 2,
                  maxdepth = 30,
-                 cp = 0.00001
+                 cp = 0.000001
                ))
 
 ## Results
@@ -318,7 +323,7 @@ tree2_performance <- data.frame(NewCases = c(ts_matrix_train$NewCases,
 ggplot(tree2_performance, aes(Time, NewCases, color = Type)) +
   geom_line(size = 0.8, alpha = 0.75) +
   geom_point() +
-  labs(y = "Detrended load", title = "Fitted values from RPART") +
+  labs(y = "Detrended load", title = "Fitted values from CART") +
   theme_ts
 
 # MAPE
@@ -331,7 +336,7 @@ mape(ts_matrix_train$NewCases, predict(tree2))
 ### Forecast using the CART Model
 
 ## Create Testing Data Matrix
-lag_testing <- decomp_ts[((week_period*lag_window)+1):N, 'seasonal']
+lag_test <- decomp_ts[(lag_window):N, 'seasonal']
  
 fourier_testing <- fourier(data_multits, K = K, h = week_period * 2)
 

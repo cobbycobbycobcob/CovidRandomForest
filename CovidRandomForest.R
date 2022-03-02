@@ -1,7 +1,7 @@
 #####################################################################################################################################################################################
 # TIME SERIES ANALYSIS USING RANDOM FOREST REGRESSION
 # COVID 19 Data
-# Aapted from https://petolau.github.io/Regression-trees-for-forecasting-time-series-in-R/
+# Adapted from https://petolau.github.io/Regression-trees-for-forecasting-time-series-in-R/
 #####################################################################################################################################################################################
 
 ### Import Libraries
@@ -39,6 +39,7 @@ data_pre_can$date <- as.Date(data_pre_can$date)
 ### Create Weekday variable week_num
 data_pre_can$week_num = as.numeric(format(data_pre_can$date, format = "%u"))
 
+## Explore the Data
 # New Cases
 newcases_pl <- ggplot(data_pre_can, aes(x=date, y=new_cases)) +
   geom_line() + scale_x_date(date_breaks = "3 months", date_labels = "%b") +
@@ -101,20 +102,6 @@ data_train <- data_timeframed[data_timeframed[ , 'date'] %in% n_date[1:(length(n
 # Contain the dates from 2 weeks ago to present in the test test (2 weeks)
 data_test <- data_timeframed[data_timeframed[ , 'date'] %in% n_date[(length(n_date) - 13):length(n_date)] , ]
 
-### Explore the Data
-## Calculate the daily averages across the training time series
-averages <- data.frame(value = rep(sapply(0:2, function(i) mean(data_train[((i*week_period)+1):((i+1)*week_period), 'new_cases'])),
-                                   each = week_period),
-                       date = data_train$date)
-
-## Plot the training time series and daily averages
-ggplot(data_train, aes(date, new_cases)) +
-  geom_line() +
-  geom_line(data = averages, aes(date, value),
-            linetype = 5, alpha = 0.75, size = 1.2, color = "firebrick2") +
-  labs(x = "Date", y = "New Cases") +
-  theme_ts
-
 ### Create Time Series Object from Training Data Set
 ## Impart weekly seasonality to Time Series object (frequency = daily)
 data_ts <- ts(data_train$new_cases, frequency = week_period)
@@ -160,42 +147,6 @@ K <- 2
 
 data_seasonfourier <- fourier(data_multits, 
                               K = K)
-
-# Dummy variables for day and week
-fourier_day <- rep(1:day_period, times = 21)
-fourier_week <- data_train[ , 'week_num']
-fourier_month <- month(as.POSIXlt(data_train$date, format="%d/%m/%Y"))
-
-## Create a dataframe of the original and fourier estimations
-data_fouriercomp <- data.frame(value = c(scale(fourier_week), data_seasonfourier[,1]),
-                               date = rep(data_train$date, 2),
-                               method = rep(c("Weekly Dummy", "Weekly Fourier"),
-                                            each = nrow(data_seasonfourier)),
-                               type = rep(c("Weekly season"),
-                                          each = nrow(data_seasonfourier)))
-
-ggplot(data_fouriercomp, aes(x = date, y = value, color = method)) +
-  geom_line(size = 1.2, alpha = 0.7) + 
-  facet_grid(type ~ ., scales = "free_y", switch = "y") +
-  labs(x = "Date", y = NULL,
-       title = 'Comparison of Dummy Seasonal Variables and Fourier Estimations') +
-  theme_ts
-
-data_fouriercomp_weekly <- data.frame(value = c(scale(fourier_week), data_seasonfourier[,3]),
-                               date = rep(data_train$date, 2),
-                               method = rep(c("Weekly Dummy", "Weekly Fourier"),
-                                            each = nrow(data_seasonfourier)),
-                               type = rep(c("Weekly season"),
-                                          each = nrow(data_seasonfourier)*2))
-
-
-## Plot the comparison of original dummy and fourier seasonal estimations
-ggplot(data_fouriercomp_weekly, aes(x = date, y = value, color = method)) +
-  geom_line(size = 1.2, alpha = 0.7) + 
-  facet_grid(type ~ ., scales = "free_y", switch = "y") +
-  labs(x = "Date", y = NULL,
-       title = 'Comparison of Dummy Seasonal Variables and Fourier Estimations') +
-  theme_ts
 
 #####################################################################################################################################################################################
 # ARIMA MODEL
@@ -336,12 +287,12 @@ mape(ts_matrix_train$NewCases, predict(tree2))
 ### Forecast using the CART Model
 
 ## Create Testing Data Matrix
-lag_test <- decomp_ts[(lag_window):N, 'seasonal']
+lag_test <- decomp_ts[(lag_window+1):N, 'seasonal']
  
-fourier_testing <- fourier(data_multits, K = K, h = week_period * 2)
+fourier_test <- fourier(data_multits, K = K, h = week_period * 2)
 
-ts_matrix_test <- data.frame(fourier_testing,
-                             Lag = lag_testing)
+ts_matrix_test <- data.frame(fourier_test,
+                             Lag = lag_test)
 
 cart_fcst <- predict(tree2, ts_matrix_test) + mean_arimafore
 
